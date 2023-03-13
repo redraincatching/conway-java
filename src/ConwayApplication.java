@@ -2,21 +2,27 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionListener;
 import java.awt.image.BufferStrategy;
+import java.io.*;
+import java.util.HashSet;
+import java.util.Set;
 
-public class ConwayApplication extends JFrame implements Runnable, MouseListener {
+public class ConwayApplication extends JFrame implements Runnable, MouseListener, MouseMotionListener {
     private static final int SQUARE_SIZE = 20;   // will probably make this mutable depending on window size later
     private static final int BOARD_SIZE = 40;
     private static final Dimension windowSize = new Dimension(800, 800);
     private final BufferStrategy strategy;
     private final boolean[][][] gameState = new boolean[BOARD_SIZE][BOARD_SIZE][2]; // front and back buffers
     private boolean pause = true;
+    private final Set<Point> updatedCells = new HashSet<>();  // to keep track of mouse drags
     // button size and stuff for x location comparisons
-    private static final int buttonY = 35, startWidth = 30, randWidth = 70, buttonHeight = 20, startX = 35, randX = 80;
+    private static final int buttonY = 35, startWidth = 30, randWidth = 70, clearWidth = 35, saveWidth = 30, loadWidth = 30, buttonHeight = 20, startX = 35, randX = 80, clearX = 165, saveX = 210, loadX = 250;
 
     public ConwayApplication() {
         // adding a keyListener
         addMouseListener(this);
+        addMouseMotionListener(this);
 
         // create and set up the window
         this.setTitle("conway's game of life");
@@ -44,7 +50,7 @@ public class ConwayApplication extends JFrame implements Runnable, MouseListener
 
     // running
     public void run() {
-        randomState();
+        this.repaint();
 
         do {
             if (!pause) {
@@ -92,9 +98,15 @@ public class ConwayApplication extends JFrame implements Runnable, MouseListener
         g.setColor(Color.GREEN);
         g.fillRect(startX, buttonY, startWidth, buttonHeight);
         g.fillRect(randX, buttonY, randWidth, buttonHeight);
+        g.fillRect(clearX, buttonY, clearWidth, buttonHeight);
+        g.fillRect(saveX, buttonY, saveWidth, buttonHeight);
+        g.fillRect(loadX, buttonY, loadWidth, buttonHeight);
         g.setColor(Color.BLACK);
         g.drawString("Start", startX + 1, buttonY + 15);
         g.drawString("Randomise", randX + 1, buttonY + 15);
+        g.drawString("Clear", clearX + 1, buttonY + 15);
+        g.drawString("Save", saveX + 1, buttonY + 15);
+        g.drawString("Load", loadX + 1, buttonY + 15);
         // they're kind of ass but i fuck with it
 
         // flip buffers
@@ -113,8 +125,16 @@ public class ConwayApplication extends JFrame implements Runnable, MouseListener
                 gameState[i][j][0] = guess == 1;
             }
         }
-        // to show the state
-        this.repaint();
+    }
+
+    // clear the board
+    public void boardClear() {
+        for (int i = 0; i < gameState.length; i++) {
+            for (int j = 0; j < gameState[i].length; j++) {
+                gameState[i][j][0] = false;
+            }
+        }
+        pause = true;
     }
 
     // rule checkers
@@ -165,6 +185,44 @@ public class ConwayApplication extends JFrame implements Runnable, MouseListener
     }
 
 
+    // file handling
+    public void save() throws IOException {
+        String filename = JOptionPane.showInputDialog("enter a filename");
+        String filepath = "C:\\Users\\eidhn\\IdeaProjects\\conway-game-of-life\\src\\" + filename + ".txt";
+
+        BufferedWriter writer = new BufferedWriter(new FileWriter(filepath));
+
+        for (boolean[][] currState : gameState) {
+            for (boolean[] cell : currState) {
+                writer.write(cell[0] ? "1" : "0"); // write 1 for true, 0 for false
+            }
+            writer.newLine(); // move to the next row
+        }
+        writer.close();
+    }
+
+    public void load() throws IOException {
+        String filename = JOptionPane.showInputDialog("enter a filename");
+        String filepath = "C:\\Users\\eidhn\\IdeaProjects\\conway-game-of-life\\src\\" + filename + ".txt";
+        String line;
+        int i, j = 0;
+
+        if (new File(filepath).exists()) {
+            BufferedReader reader = new BufferedReader(new FileReader(filepath));
+            while ((line = reader.readLine()) != null) {
+                for (i = 0; i < BOARD_SIZE; i++) {
+                    // the assignment can be the comparison, booleans are cool
+                    gameState[j][i][0] = (line.charAt(i) == '1');
+                }
+                j++;
+            }
+            reader.close();
+        } else {
+            JOptionPane.showMessageDialog(null,"that doesn't seem to be a valid file");
+        }
+    }
+
+
     // mouseclick handlers
     @Override
     public void mousePressed(MouseEvent e) {
@@ -172,7 +230,7 @@ public class ConwayApplication extends JFrame implements Runnable, MouseListener
     }
     @Override
     public void mouseReleased(MouseEvent e) {
-
+        updatedCells.clear();
     }
     @Override
     public void mouseEntered(MouseEvent e) {
@@ -188,6 +246,7 @@ public class ConwayApplication extends JFrame implements Runnable, MouseListener
         // not going to matter if paused, actually
         int x = e.getX();
         int y = e.getY();
+        int cellX, cellY;
 
         if ((x >= startX && x <= startX + startWidth) && (y >= buttonY && y <= buttonY + buttonHeight)) {
             pause = !pause;
@@ -195,5 +254,54 @@ public class ConwayApplication extends JFrame implements Runnable, MouseListener
         else if ((x >= randX && x <= randX + randWidth) && (y >= buttonY && y <= buttonY + buttonHeight)) {
             randomState();
         }
+        else if ((x >= clearX && x <= clearX + clearWidth) && (y >= buttonY && y <= buttonY + buttonHeight)) {
+            boardClear();
+        }
+        else if ((x >= saveX && x <= saveX + saveWidth) && (y >= buttonY && y <= buttonY + buttonHeight)) {
+            try {
+                save();
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+        else if ((x >= loadX && x <= loadX + loadWidth) && (y >= buttonY && y <= buttonY + buttonHeight)) {
+            try {
+                load();
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+        else if (pause) {
+            cellX = (int) Math.floor((double) x / 20);
+            cellY = (int) Math.floor((double) y / 20);
+
+            gameState[cellX][cellY][0] = !gameState[cellX][cellY][0];
+        }
+
+
+        this.repaint();
+    }
+
+    // mouse motion events
+    @Override
+    public void mouseDragged(MouseEvent e) {
+        int x = e.getX();
+        int y = e.getY();
+        int cellX = (int) Math.floor((double) x / 20);
+        int cellY = (int) Math.floor((double) y / 20);
+
+        Point cell = new Point(cellX, cellY);
+
+        if (pause && !updatedCells.contains(cell)) {
+            gameState[cellX][cellY][0] = !gameState[cellX][cellY][0];
+            updatedCells.add(cell);
+        }
+
+        this.repaint();
+    }
+
+    @Override
+    public void mouseMoved(MouseEvent e) {
+
     }
 }
